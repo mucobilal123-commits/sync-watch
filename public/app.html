@@ -149,6 +149,7 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
 <script>
 const v = document.getElementById('v');
 const urlInput = document.getElementById('url');
@@ -184,8 +185,10 @@ function setConn(ok, warn){
   connDot.className = 'dot' + (ok ? '' : warn ? ' warn' : ' bad');
 }
 
+let dash = null;
 function loadSource(url){
   if (hls){ hls.destroy(); hls = null; }
+  if (dash){ try { dash.reset(); } catch(e){} dash = null; }
   if (!url){
     v.removeAttribute('src'); v.load();
     srcEl.textContent = '—';
@@ -200,6 +203,11 @@ function loadSource(url){
     hls.attachMedia(v);
     hls.on(Hls.Events.MANIFEST_PARSED, () => hideOverlay());
     hls.on(Hls.Events.ERROR, (_,d)=>{ if (d.fatal) showOverlay('Oynatma hatası', d.details||'', false); });
+  } else if (/\.mpd($|\?)/i.test(url) && window.dashjs){
+    dash = dashjs.MediaPlayer().create();
+    dash.initialize(v, url, false);
+    dash.on('canPlay', () => hideOverlay());
+    dash.on('error', e => showOverlay('Oynatma hatası', e.error || '', false));
   } else {
     v.src = url;
   }
