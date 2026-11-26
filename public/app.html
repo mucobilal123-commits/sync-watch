@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Sync Watch</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#070a12;
+    --panel:#0f1420;
+    --panel2:#151b2a;
+    --line:#1e2636;
+    --text:#e6e8ee;
+    --muted:#8591a8;
+    --accent:#6ea8ff;
+    --accent2:#8a7bff;
+    --ok:#4ade80;
+    --warn:#fbbf24;
+    --err:#f87171;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(110,168,255,.12), transparent 60%),
+      radial-gradient(900px 500px at 110% 10%, rgba(138,123,255,.10), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    font:15px/1.4 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    display:flex;flex-direction:column;
+  }
+  header{
+    display:flex;gap:12px;align-items:center;
+    padding:12px 18px;
+    background:rgba(15,20,32,.75);
+    backdrop-filter:blur(10px);
+    border-bottom:1px solid var(--line);
+    position:sticky;top:0;z-index:10;
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.2px}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok)}
+  .dot.bad{background:var(--err);box-shadow:0 0 10px var(--err)}
+  .dot.warn{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+  .url-wrap{flex:1;display:flex;gap:8px}
+  .url-wrap input{
+    flex:1;padding:11px 14px;border-radius:12px;
+    border:1px solid var(--line);background:#0a0f1a;color:#fff;
+    outline:none;transition:border-color .15s, box-shadow .15s;
+  }
+  .url-wrap input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(110,168,255,.18)}
+  button.primary{
+    padding:11px 16px;border:0;border-radius:12px;cursor:pointer;color:#fff;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    font-weight:600;transition:transform .08s, filter .15s;
+  }
+  button.primary:hover{filter:brightness(1.1)}
+  button.primary:active{transform:translateY(1px)}
+  .meta{display:flex;align-items:center;gap:14px;color:var(--muted);font-size:13px;white-space:nowrap}
+  .meta b{color:var(--text);font-weight:600}
+  .logout{color:var(--muted);text-decoration:none;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--line)}
+  .logout:hover{color:var(--text);border-color:#2a3344}
+
+  main{flex:1;display:flex;justify-content:center;padding:18px}
+  .stage{width:min(1200px,100%);display:flex;flex-direction:column;gap:14px}
+  .player{
+    position:relative;border-radius:16px;overflow:hidden;
+    background:#000;
+    box-shadow:0 30px 80px rgba(0,0,0,.5), 0 0 0 1px var(--line) inset;
+    aspect-ratio:16/9;
+  }
+  video{width:100%;height:100%;display:block;background:#000}
+  .overlay{
+    position:absolute;inset:0;display:grid;place-items:center;
+    background:radial-gradient(400px 200px at 50% 50%, rgba(0,0,0,.3), rgba(0,0,0,.7));
+    color:var(--muted);text-align:center;padding:24px;pointer-events:none;
+    transition:opacity .25s;
+  }
+  .overlay.hidden{opacity:0}
+  .overlay h2{margin:0 0 6px;font-size:18px;color:var(--text);font-weight:600}
+  .spinner{
+    width:40px;height:40px;border-radius:50%;
+    border:3px solid rgba(255,255,255,.15);border-top-color:var(--accent);
+    animation:spin 1s linear infinite;margin:0 auto 10px;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .bar{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 14px;border:1px solid var(--line);border-radius:12px;
+    background:var(--panel);color:var(--muted);font-size:13px;
+  }
+  .bar .left{display:flex;align-items:center;gap:10px;min-width:0}
+  .bar .right{display:flex;align-items:center;gap:14px}
+  .pill{
+    padding:4px 10px;border-radius:999px;font-size:12px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--text);
+  }
+  .pill.ok{color:var(--ok);border-color:rgba(74,222,128,.3)}
+  .pill.warn{color:var(--warn);border-color:rgba(251,191,36,.3)}
+  .src{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60ch}
+
+  @media (max-width:720px){
+    header{flex-wrap:wrap}
+    .url-wrap{order:3;flex-basis:100%}
+    .meta{order:2;margin-left:auto}
+    .bar{flex-direction:column;align-items:flex-start}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="dot" id="conn"></span>Sync Watch</div>
+  <div class="url-wrap">
+    <input id="url" placeholder="Video URL yapıştır (.mp4 veya .m3u8)">
+    <button class="primary" id="load">Yükle</button>
+  </div>
+  <div class="meta">
+    <span><b id="users">0</b> izleyici</span>
+    <span><b id="ping">–</b> ms</span>
+  </div>
+  <form method="post" action="/logout" style="margin:0"><a class="logout" href="#" onclick="this.closest('form').submit();return false">çıkış</a></form>
+</header>
+
+<main>
+  <div class="stage">
+    <div class="player">
+      <video id="v" controls playsinline preload="auto"></video>
+      <div class="overlay" id="ov">
+        <div>
+          <div class="spinner" id="spin" style="display:none"></div>
+          <h2 id="ovTitle">Video bekleniyor</h2>
+          <div id="ovSub">Üstten URL yapıştırıp Yükle'ye bas.</div>
+        </div>
+      </div>
+    </div>
+    <div class="bar">
+      <div class="left">
+        <span class="pill" id="playState">beklemede</span>
+        <span class="src" id="src">—</span>
+      </div>
+      <div class="right">
+        <span>sapma: <b id="drift">0.0</b> sn</span>
+        <span class="pill" id="syncPill">senkron</span>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
+<script>
+const v = document.getElementById('v');
+const urlInput = document.getElementById('url');
+const usersEl = document.getElementById('users');
+const pingEl = document.getElementById('ping');
+const srcEl = document.getElementById('src');
+const stateEl = document.getElementById('playState');
+const driftEl = document.getElementById('drift');
+const syncPill = document.getElementById('syncPill');
+const ov = document.getElementById('ov');
+const ovTitle = document.getElementById('ovTitle');
+const ovSub = document.getElementById('ovSub');
+const spin = document.getElementById('spin');
+const connDot = document.getElementById('conn');
+
+const socket = io({ transports:['websocket','polling'] });
+
+let suppress = false;
+let clockOffset = 0;
+let currentUrl = '';
+let hls = null;
+let lastServerState = null;
+
+function showOverlay(title, sub, loading){
+  ovTitle.textContent = title;
+  ovSub.textContent = sub || '';
+  spin.style.display = loading ? 'block' : 'none';
+  ov.classList.remove('hidden');
+}
+function hideOverlay(){ ov.classList.add('hidden'); }
+
+function setConn(ok, warn){
+  connDot.className = 'dot' + (ok ? '' : warn ? ' warn' : ' bad');
+}
+
+function loadSource(url){
+  if (hls){ hls.destroy(); hls = null; }
+  if (!url){
+    v.removeAttribute('src'); v.load();
+    srcEl.textContent = '—';
+    showOverlay('Video bekleniyor', 'Üstten URL yapıştırıp Yükle\'ye bas.', false);
+    return;
+  }
+  srcEl.textContent = url;
+  showOverlay('Yükleniyor', url, true);
+  if (/\.m3u8($|\?)/i.test(url) && window.Hls && Hls.isSupported()){
+    hls = new Hls({ lowLatencyMode:true, maxBufferLength:30 });
+    hls.loadSource(url);
+    hls.attachMedia(v);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => hideOverlay());
+    hls.on(Hls.Events.ERROR, (_,d)=>{ if (d.fatal) showOverlay('Oynatma hatası', d.details||'', false); });
+  } else {
+    v.src = url;
+  }
+}
+
+function serverNow(){ return Date.now() + clockOffset; }
+
+function applyState(s){
+  lastServerState = s;
+  suppress = true;
+  if (s.url !== currentUrl){
+    currentUrl = s.url;
+    urlInput.value = s.url;
+    loadSource(s.url);
+  }
+  const expected = s.isPlaying
+    ? s.currentTime + (serverNow() - s.serverTime) / 1000
+    : s.currentTime;
+  const diff = v.currentTime - expected;
+  if (Math.abs(diff) > 1.5){
+    try { v.currentTime = expected; } catch(e){}
+  }
+  if (s.isPlaying && v.paused) v.play().catch(()=>{});
+  if (!s.isPlaying && !v.paused) v.pause();
+  stateEl.textContent = s.isPlaying ? 'oynatılıyor' : 'duraklatıldı';
+  stateEl.className = 'pill ' + (s.isPlaying ? 'ok' : '');
+  setTimeout(()=>{ suppress = false; }, 200);
+}
+
+// yumuşak kayma düzeltme: hızlan/yavaşla
+setInterval(() => {
+  if (!lastServerState || !lastServerState.isPlaying || v.paused || v.readyState < 3) return;
+  const expected = lastServerState.currentTime + (serverNow() - lastServerState.serverTime)/1000;
+  const diff = v.currentTime - expected;
+  driftEl.textContent = diff.toFixed(2);
+  if (Math.abs(diff) > 1.5){
+    try { v.currentTime = expected; } catch(e){}
+    v.playbackRate = 1;
+    syncPill.textContent = 'atladı'; syncPill.className='pill warn';
+  } else if (Math.abs(diff) > 0.25){
+    v.playbackRate = diff > 0 ? 0.95 : 1.05;
+    syncPill.textContent = 'ayarlanıyor'; syncPill.className='pill warn';
+  } else {
+    v.playbackRate = 1;
+    syncPill.textContent = 'senkron'; syncPill.className='pill ok';
+  }
+}, 500);
+
+// saat sync + ping
+function doPing(){
+  const t0 = Date.now();
+  socket.emit('ping', (serverT) => {
+    const rtt = Date.now() - t0;
+    clockOffset = serverT + rtt/2 - Date.now();
+    pingEl.textContent = rtt;
+    setConn(true, rtt > 300);
+  });
+}
+setInterval(doPing, 3000);
+
+socket.on('connect', ()=>{ setConn(true); doPing(); });
+socket.on('disconnect', ()=>{ setConn(false); syncPill.textContent='bağlantı yok'; syncPill.className='pill warn'; });
+socket.on('state', applyState);
+socket.on('users', n => usersEl.textContent = n);
+
+v.addEventListener('play',   () => { if (!suppress) socket.emit('play',  v.currentTime); });
+v.addEventListener('pause',  () => { if (!suppress) socket.emit('pause', v.currentTime); });
+v.addEventListener('seeked', () => { if (!suppress) socket.emit('seek',  v.currentTime); });
+v.addEventListener('waiting',() => { spin.style.display='block'; ov.classList.remove('hidden'); ovTitle.textContent='Tampon dolduruluyor'; ovSub.textContent=''; });
+v.addEventListener('playing',() => hideOverlay());
+v.addEventListener('canplay',() => hideOverlay());
+
+document.getElementById('load').onclick = () => {
+  const u = urlInput.value.trim();
+  if (u) socket.emit('setUrl', u);
+};
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('load').click(); });
+</script>
+</body>
+</html>

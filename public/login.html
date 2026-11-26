@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Giriş</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0f17;color:#e6e8ee;font:16px system-ui,sans-serif}
+  form{background:#131a26;padding:28px 24px;border-radius:14px;width:min(320px,90vw);box-shadow:0 20px 50px rgba(0,0,0,.4)}
+  h1{margin:0 0 16px;font-size:20px}
+  input{width:100%;box-sizing:border-box;padding:12px 14px;border-radius:10px;border:1px solid #2a3344;background:#0b0f17;color:#fff;font-size:18px;letter-spacing:4px;text-align:center}
+  button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#4f8cff;color:#fff;font-size:16px;cursor:pointer}
+  .err{color:#ff6b6b;margin-top:10px;font-size:14px;text-align:center}
+</style>
+</head>
+<body>
+<form method="post" action="/login">
+  <h1>PIN girişi</h1>
+  <input name="pin" type="password" inputmode="numeric" autocomplete="off" autofocus placeholder="PIN">
+  <button>Gir</button>
+  <div class="err" id="err"></div>
+</form>
+<script>
+  if (new URLSearchParams(location.search).get('err')) {
+    document.getElementById('err').textContent = 'Yanlış PIN';
+  }
+</script>
+</body>
+</html>
