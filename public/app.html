@@ -126,6 +126,7 @@
   <div class="stage">
     <div class="player">
       <video id="v" controls playsinline preload="auto"></video>
+      <div id="ytwrap" style="display:none;position:absolute;inset:0;background:#000"><div id="ytplayer" style="width:100%;height:100%"></div></div>
       <div class="overlay" id="ov">
         <div>
           <div class="spinner" id="spin" style="display:none"></div>
@@ -150,6 +151,7 @@
 <script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js"></script>
 <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
 <script>
 const v = document.getElementById('v');
 const urlInput = document.getElementById('url');
@@ -186,9 +188,27 @@ function setConn(ok, warn){
 }
 
 let dash = null;
+let yt = null;
+let ytPendingSeek = null;
+const ytwrap = document.getElementById('ytwrap');
+
+function getYtId(url){
+  const m = String(url).match(/(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{11})/);
+  return m ? m[1] : null;
+}
+
+function destroyYt(){
+  if (yt){ try { yt.destroy(); } catch(e){} yt = null; }
+  ytwrap.style.display = 'none';
+  v.style.display = '';
+  const d = document.getElementById('ytplayer');
+  if (d) d.innerHTML = '';
+}
+
 function loadSource(url){
   if (hls){ hls.destroy(); hls = null; }
   if (dash){ try { dash.reset(); } catch(e){} dash = null; }
+  destroyYt();
   if (!url){
     v.removeAttribute('src'); v.load();
     srcEl.textContent = '—';
@@ -197,7 +217,33 @@ function loadSource(url){
   }
   srcEl.textContent = url;
   showOverlay('Yükleniyor', url, true);
-  if (/\.m3u8($|\?)/i.test(url) && window.Hls && Hls.isSupported()){
+  const ytId = getYtId(url);
+  if (ytId){
+    v.style.display = 'none';
+    ytwrap.style.display = 'block';
+    const startFn = () => {
+      yt = new YT.Player('ytplayer', {
+        videoId: ytId,
+        playerVars: { autoplay: 0, controls: 1, playsinline: 1, modestbranding: 1, rel: 0, enablejsapi: 1 },
+        events: {
+          onReady: () => {
+            hideOverlay();
+            if (ytPendingSeek != null) { try { yt.seekTo(ytPendingSeek, true); } catch(e){} ytPendingSeek = null; }
+          },
+          onStateChange: (e) => {
+            if (suppress) return;
+            try {
+              const t = yt.getCurrentTime();
+              if (e.data === 1) socket.emit('play', t);
+              else if (e.data === 2) socket.emit('pause', t);
+            } catch(err){}
+          }
+        }
+      });
+    };
+    if (window.YT && YT.Player) startFn();
+    else window.onYouTubeIframeAPIReady = startFn;
+  } else if (/\.m3u8($|\?)/i.test(url) && window.Hls && Hls.isSupported()){
     hls = new Hls({ lowLatencyMode:true, maxBufferLength:30 });
     hls.loadSource(url);
     hls.attachMedia(v);
@@ -226,12 +272,25 @@ function applyState(s){
   const expected = s.isPlaying
     ? s.currentTime + (serverNow() - s.serverTime) / 1000
     : s.currentTime;
-  const diff = v.currentTime - expected;
-  if (Math.abs(diff) > 1.5){
-    try { v.currentTime = expected; } catch(e){}
+  if (yt){
+    try {
+      if (!yt.getPlayerState){ ytPendingSeek = expected; }
+      else {
+        const cur = yt.getCurrentTime();
+        if (Math.abs(cur - expected) > 1.5) yt.seekTo(expected, true);
+        const st = yt.getPlayerState();
+        if (s.isPlaying && st !== 1) yt.playVideo();
+        if (!s.isPlaying && st === 1) yt.pauseVideo();
+      }
+    } catch(e){}
+  } else {
+    const diff = v.currentTime - expected;
+    if (Math.abs(diff) > 1.5){
+      try { v.currentTime = expected; } catch(e){}
+    }
+    if (s.isPlaying && v.paused) v.play().catch(()=>{});
+    if (!s.isPlaying && !v.paused) v.pause();
   }
-  if (s.isPlaying && v.paused) v.play().catch(()=>{});
-  if (!s.isPlaying && !v.paused) v.pause();
   stateEl.textContent = s.isPlaying ? 'oynatılıyor' : 'duraklatıldı';
   stateEl.className = 'pill ' + (s.isPlaying ? 'ok' : '');
   setTimeout(()=>{ suppress = false; }, 200);
