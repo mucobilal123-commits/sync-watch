@@ -4,7 +4,8 @@
   "description": "PIN korumalı senkron film izleme",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "postinstall": "node install-ytdlp.js"
   },
   "dependencies": {
     "express": "^4.19.2",

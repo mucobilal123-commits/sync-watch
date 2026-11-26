@@ -3,11 +3,14 @@ const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
 const cookieParser = require('cookie-parser');
+const { spawn } = require('child_process');
+const fs = require('fs');
 const { Server } = require('socket.io');
 
 const PIN = process.env.PIN || '1234';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(16).toString('hex');
 const PORT = process.env.PORT || 3000;
+const YTDLP = path.join(__dirname, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 
 function signToken() {
   return crypto.createHmac('sha256', SESSION_SECRET).update('ok').digest('hex');
@@ -77,13 +80,43 @@ function snapshot() {
   };
 }
 
+function isDirectMedia(url) {
+  return /\.(mp4|webm|mkv|mov|m3u8|mpd|ogg|ogv|m4v)(\?|$)/i.test(url);
+}
+
+function resolveWithYtDlp(url) {
+  return new Promise((resolve) => {
+    if (!fs.existsSync(YTDLP)) return resolve(null);
+    const args = ['-g', '-f', 'best[ext=mp4][protocol^=http]/best[protocol^=http]/best', '--no-playlist', '--no-warnings', '--no-check-certificate', url];
+    let out = '';
+    const p = spawn(YTDLP, args, { timeout: 25000 });
+    p.stdout.on('data', d => out += d.toString());
+    p.on('error', () => resolve(null));
+    p.on('close', (code) => {
+      if (code !== 0) return resolve(null);
+      const first = out.split('\n').map(s => s.trim()).find(Boolean);
+      resolve(first || null);
+    });
+  });
+}
+
+async function resolveUrl(url) {
+  if (!url) return '';
+  if (isDirectMedia(url)) return url;
+  const resolved = await resolveWithYtDlp(url);
+  return resolved || url;
+}
+
 io.on('connection', (socket) => {
   socket.emit('state', snapshot());
   io.emit('users', io.engine.clientsCount);
 
-  socket.on('setUrl', (url) => {
+  socket.on('setUrl', async (url) => {
     if (typeof url !== 'string' || url.length > 2000) return;
-    state.url = url;
+    const original = url;
+    io.emit('resolving', original);
+    const final = await resolveUrl(url);
+    state.url = final;
     state.currentTime = 0;
     state.isPlaying = false;
     state.updatedAt = Date.now();
@@ -118,5 +151,5 @@ io.on('connection', (socket) => {
 });
 
 server.listen(PORT, () => {
-  console.log('sync-watch http://localhost:' + PORT + '  PIN=' + PIN);
+  console.log(`sync-watch http://localhost:${PORT}  PIN=${PIN}`);
 });
